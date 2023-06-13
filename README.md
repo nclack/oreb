@@ -20,3 +20,7 @@ Exploring data visualization with wgpu.
 
 - Use staging utility. Does it give more automatic memory management? How does
   it work?
+- try on different targets
+- hold down space to record a gif
+- compute shaders, especially for geometry encoding
+- click to zoom

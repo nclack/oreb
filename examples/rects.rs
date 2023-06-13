@@ -122,8 +122,8 @@ async fn main() {
         .with_titlebar_transparent(true)
         .with_resizable(true)
         .with_inner_size(LogicalSize {
-            width: 501,
-            height: 501,
+            width: 500,
+            height: 500,
         })
         .build(&events)
         .expect("Failed to build window");
@@ -138,7 +138,7 @@ async fn main() {
             &PainterSettings {
                 edge: [0.0, 0.0, 0.0, 1.0],
                 fill: [0.2, 0.2, 0.2, 0.5],
-                line_width: 8.0,
+                line_width: 1.0,
             },
         );
     }
