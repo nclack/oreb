@@ -1,14 +1,16 @@
 use std::f32::consts::PI;
 
 use dotenv::dotenv;
-use log::{debug, error, info};
-use oreb::{Context, Painter, PainterSettings, Vertex};
-use wgpu::{Color, TextureView, TextureViewDescriptor};
+use log::{error, info};
+use oreb::{
+    rect::{Painter, PainterSettings, Vertex},
+    Context,
+};
+use wgpu::{Color, SurfaceError, SurfaceTexture, TextureViewDescriptor};
 use winit::{
     dpi::{LogicalSize, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::macos::WindowBuilderExtMacOS,
     window::WindowBuilder,
 };
 
@@ -18,7 +20,7 @@ struct Rect {
     orientation_radians: f32,
 }
 
-// x0,x1,y0,y1 are the bounds within which the rects should be generated.
+// x0,x1,y0,y1 are the bounds within which the rectangles should be generated.
 // They should be in clip space.
 fn make_rects(time_seconds: f32, x0: f32, x1: f32, y0: f32, y1: f32) -> Vec<Rect> {
     let steps = 100;
@@ -94,19 +96,28 @@ fn encode_geometry(rects: &[Rect]) -> (Vec<Vertex>, Vec<u32>) {
 }
 
 fn draw(
-    context: &Context,
-    target: &TextureView,
+    rc: &Context,
     painter: &mut Painter,
     clear_color: Color,
     time_seconds: f32,
-) {
+) -> Result<SurfaceTexture, SurfaceError> {
+    /*
+    let b=painter.builder();
+    let painter=b.finish();
+    painter.draw(rc,&target,clear_color);
+    */
+
     // 1. Generate some random rectangles
     // 2. encode geometry
     let (vs, is) = encode_geometry(&make_rects(time_seconds, -0.9, 0.9, -0.9, 0.9));
     // 3. stage
-    painter.set_geometry(context, &vs, &is);
+    painter.set_geometry(rc, &vs, &is);
     // 4. draw
-    painter.draw(context, target, clear_color);
+
+    let frame = rc.get_next_frame()?;
+    let target = frame.texture.create_view(&TextureViewDescriptor::default());
+    painter.draw(rc, &target, clear_color)?;
+    Ok(frame)
 }
 
 #[async_std::main]
@@ -119,7 +130,6 @@ async fn main() {
     let window = WindowBuilder::new()
         .with_title("Oreb: Rectangles")
         .with_transparent(false)
-        .with_titlebar_transparent(true)
         .with_resizable(true)
         .with_inner_size(LogicalSize {
             width: 500,
@@ -128,20 +138,21 @@ async fn main() {
         .build(&events)
         .expect("Failed to build window");
 
-    let mut rc = Context::with_window(&window).await;
+    let mut rc = {
+        let PhysicalSize { width, height } = window.inner_size();
+        Context::with_window(&window, width, height).await
+    };
     let mut painter = rc.make_rect_painter();
 
-    {
-        let size = window.inner_size();
-        painter.set_uniforms(
-            &rc,
-            &PainterSettings {
-                edge: [0.0, 0.0, 0.0, 1.0],
-                fill: [0.2, 0.2, 0.2, 0.5],
-                line_width: 1.0,
-            },
-        );
-    }
+    painter.set_uniforms(
+        &rc,
+        &PainterSettings {
+            edge: [0.0, 0.0, 0.0, 1.0],
+            fill: [0.2, 0.2, 0.2, 0.5],
+            line_width_px: 2.0,
+            corner_radius_px: 0.0,
+        },
+    );
 
     let clear_color = Color {
         r: 0.3,
@@ -154,16 +165,15 @@ async fn main() {
     let main_window_id = window.id();
     events.run(move |event, _, control_flow| match event {
         Event::RedrawRequested(window_id) if window_id == main_window_id => {
-            match rc.get_next_frame() {
+            match {
+                draw(
+                    &rc,
+                    &mut painter,
+                    clear_color,
+                    clock.elapsed().as_secs_f32(),
+                )
+            } {
                 Ok(frame) => {
-                    let view = frame.texture.create_view(&TextureViewDescriptor::default());
-                    draw(
-                        &rc,
-                        &view,
-                        &mut painter,
-                        clear_color,
-                        clock.elapsed().as_secs_f32(),
-                    );
                     frame.present();
                 }
                 Err(wgpu::SurfaceError::Lost) => rc.reset(),

@@ -24,3 +24,8 @@ Exploring data visualization with wgpu.
 - hold down space to record a gif
 - compute shaders, especially for geometry encoding
 - click to zoom
+
+## NOTES
+
+- painter instance depends on rc instance
+  - only valid for that rc - because of the device

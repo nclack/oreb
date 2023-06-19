@@ -1,11 +1,12 @@
-struct PainterUniforms {
+struct Settings {
     edge: vec4<f32>,
     fill: vec4<f32>,
     line_width_px: f32,
+    corner_radius_px: f32
 }
 
 @group(0) @binding(0)
-var<uniform> painter_uniforms: PainterUniforms;
+var<uniform> setttings: Settings;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -13,10 +14,10 @@ struct VertexInput {
 }
 
 struct VertexOutput {
-    // get mapped from clip space to viewport (pixel) space between stages (looks like)
+    // position get mapped from clip space to viewport (pixel) space between 
+    // pipleline stages (looks like)
     @builtin(position) position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
-//    @location(1) viewport_position: vec2<f32>
 }
 
 @vertex
@@ -26,7 +27,6 @@ fn vs(
     var out: VertexOutput;
     out.tex_coords = model.tex_coords;
     out.position = vec4<f32>(model.position, 1.0);
-//    out.viewport_position = 0.5*(model.position.xy+1.0)*painter_uniforms.viewport_size;
     return out;
 }
 
@@ -36,32 +36,16 @@ fn sd_box(p: vec2<f32>, b: vec2<f32>) -> f32 {
     return length(max(d, vec2<f32>())) + min(max(d.x, d.y), 0.0);
 }
 
+// p    query point
+// b    half box shape (w/2,h/2) where (w,h) is the shape of the box.
+// r    corner radius
+//
+// p,b,r should all be in the same units (metric space). Returns the signed 
+// distance between p and the edge of the rounded box. "Inside" corresponds
+// to negative distances.
 fn sd_round_box(p: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
     let q = abs(p) - b + r;
     return length(max(q, vec2<f32>())) + min(max(q.x, q.y), 0.0) - r;
-}
-
-fn sd_circle(p: vec2<f32>, r: f32) -> f32 {
-    return length(p) - r;
-}
-
-fn sd_ellipse(p: vec2<f32>, e: vec2<f32>) -> f32 {
-    let pAbs = abs(p);
-    let ei = 1.0 / e;
-    let e2 = e * e;
-    let ve = ei * vec2(e2.x - e2.y, e2.y - e2.x);
-
-    var t = vec2(0.70710678118654752, 0.70710678118654752);
-    for (var i = 0; i < 3; i++) {
-        let v = ve * t * t * t;
-        let u = normalize(pAbs - v) * length(t * e - v);
-        let w = ei * (v + u);
-        t = normalize(clamp(w, vec2(0.0), vec2(1.0)));
-    }
-
-    let nearestAbs = t * e;
-    let dist = length(pAbs - nearestAbs);
-    if dot(pAbs, pAbs) < dot(nearestAbs, nearestAbs) {return -dist;} else {return dist;}
 }
 
 @fragment
@@ -76,18 +60,13 @@ fn fs(in: VertexOutput) -> @location(0) vec4<f32> {
     let dy = length(vec2(duvdx.y, duvdy.y));
     let s = vec2(dx, dy);
 
-    // let d = sd_round_box(in.tex_coords.xy / s, 0.5 / s, 32.0);
-    let d = max(
-        -sd_ellipse(in.tex_coords.xy / s, 0.25 / s),
-        // -sd_circle(in.tex_coords.xy / s, 8.0 / length(fwidth(in.tex_coords))),
-        sd_round_box(in.tex_coords.xy / s, 0.5 / s, 15.0)
-    );
+    let d = sd_round_box(in.tex_coords.xy / s, 0.5 / s, setttings.corner_radius_px);
 
-    if d < -painter_uniforms.line_width_px {
-        let eps = d + painter_uniforms.line_width_px;
-        return mix(painter_uniforms.edge, painter_uniforms.fill, saturate(-eps));
+    if d < -setttings.line_width_px {
+        let eps = d + setttings.line_width_px;
+        return mix(setttings.edge, setttings.fill, saturate(-eps));
     } else if d < 0.0 {
-        var color = painter_uniforms.edge;
+        var color = setttings.edge;
         color.a = saturate(0.5 - d);
         return color;
     } else {
